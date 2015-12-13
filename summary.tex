@@ -76,12 +76,16 @@ overview of the most important parts and their functions:
        the execution units can execute the instruction out-of-order.
  \item \textbf{Register renaming:} Register renaming minimizes architectural resource dependencies, namely WAW
        \footnote{\label{footnote-waw}WAW and WAR are abbreviations for data dependencies and are explained in Section \ref{sec:graphs}.} 
-       and WAR
-       \footnote{See footnote \ref{footnote-waw}}. Rename buffers are used to implement register renaming.
- \item \textbf{Reorder buffer:} Saves instructions in-order, is used by the execution unit which can execute instructions out-of-order.
+       and WAR \footnote{See footnote \ref{footnote-waw}} dependencies. If instructions are executed out-of-order, then it maybe the case 
+       that a result needs to be written into a register while an earlier instruction still needs the old value. By renaming the register 
+       and temporarily storing the new result in a different register the data dependency between those instructions can be broken up. On 
+       the microarchitectural level \textbf{rename buffers} are used to implement register renaming.
  \item \textbf{Precise interrupts:} An interrupt is precise if the state of the processor includes the data of all instructions before 
        the instruction that caused the interrupt and no data from the instruction causing the interrupt or later instructions. Processors 
        that do not have precise interrupts are quite difficult to program.
+ \item \textbf{Reorder buffer:} A reorder buffer is used to save the original order and the states of instructions as they are dispatched 
+       to execution units. Reorder buffers are used to implement prceise interrupts, because they allow the processor to enforce in-order 
+       completion of instructions even though they maybe executed out-of-order by the execution units.
  \item \textbf{Completion stage:} Important for precise interrupts. Also separates completion stage and write-back stage to support load-
        with-update instructions.
  \item \textbf{Branch prediction:} A technique to avoid pipeline stalling. The processor predicts if a branch is taken and what its 
@@ -112,7 +116,10 @@ station where it is decoded. \textbf{Problems} of pipelining are called \textbf{
 instruction results. Such a hazard often appears if a second instruction depends on the result of a first instruction. It can be solved 
 with different techniques such as out-of-order execution. Another problem appears in combination with branch prediction. If a branch is 
 wrongly predicted, then the pipeline becomes invalid and must be restarted, which leads to a penalty of several cycles.
-\end{itemize}
+\item \textbf{Pipeline bypass:} A way to prevent pipeline hazards is a pipeline bypass. This allows a value that was computed by the 
+previous instruction to be read by the next instruction without the need to wait until the instruction has gone through the complete and 
+writeback stages.
+\end{itemize}	
 
 \subsection{Instruction Set Architectures}
 An instruction set architecture defines the programming interface of the processor. It includes aspects such as instructions, registers, 
@@ -134,7 +141,7 @@ has a variable instruction width.
 
 It is also important to note that pipelining and superscalar architectures can be problematic on CISC processors due to the complexity of 
 CISC instructions. Therefore CISC processors have introduced a concept called micro-operations, where instructions are first converted 
-into one or more micro-operation and are then dispatched an executed by the processor. This fact however does not turn a CISC processor 
+into one or more micro-operation and are then dispatched and executed by the processor. This fact however does not turn a CISC processor 
 into a RISC processor, it is just an implementation detail of the microarchitecture of CISC processors.
 
 \subsubsection*{Instruction level parallelism}
@@ -163,10 +170,14 @@ The SIMD concept is not tied to a particular ISA but can be added to RISC, CISC 
 level the processor has special SIMD registers and SIMD execution units to support the different SIMD instructions.
 
 \section{Optimizations}
+\label{sec:optimization}
+This section describes high-level optimizations that are performed by the compiler on the intermediate representation of a program. At 
+this point the code is still machine independent and instruction selection has not yet been performed.
+
 \subsection{Static Single Assignment}
-Static single assignment (SSA) is an optimization required to enable most other optimizations, is a form where each variable has only a
-single value assignment. Additional every variable must be defined before it is used. Every code can be transformed into SSA form by 
-adding indexes to variables:
+Static single assignment (SSA) is an optimization required to enable most other optimizations, it is a form where each variable has only 
+a single value assignment. Additionally every variable must be defined before it is used. Every code can be transformed into SSA form by 
+adding indexes to variables. For example
 
 \parbox{10cm}{
 \begin{flalign*}
@@ -174,20 +185,26 @@ adding indexes to variables:
     z &= 8\\
     i &= i + z
 \end{flalign*}
-becomes:
+}
+
+\noindent becomes:
+
+\parbox{10cm}{
 \begin{flalign*}
     i_1 &= 5 + 7 &\\
     z &= 8\\
     i_2 &= i_1 + z
 \end{flalign*}
-When dealing with branches $\varphi$-nodes are added to merge variables from separate branches:
 }
+
+\noindent When dealing with branches, $\varphi$-nodes are added to merge variables from separate branches:
+
 \begin{lstlisting}[xleftmargin=.5cm,numbers=none,mathescape=true,columns=flexible,basicstyle=\ttfamily]
 if(a)
     $i_1$ = 10
 else
     $i_2$ = 20
-$i_3=\varphi(i_1,i_2)$
+$i_3$ = $\varphi(i_1,i_2)$
 \end{lstlisting}
 
 \subsection{Graph structures and memory dependencies}
@@ -274,10 +291,12 @@ set architecture) being used.
       \item Loop peeling is special case of loop splitting that peels of one or more iterations from the beginning or the end of the loop and performs these operations separately before or after the loop.
      \end{itemize}
      \item Loop collapsing (collases inner and outer loop) vs. Strip mining 
-     \item Strip mining transforms a single loop into a doubly nested loop where is incremented by a certain block size and the inner loop is incremented by one:
+     \item Strip mining transforms a single loop into a doubly nested loop where the outer loop is incremented by a certain block size 
+     and the inner loop is incremented by one:
      \begin{lstlisting}
 	for(int j=0; j<N; j+=32) {
 	    for(int i=j; i<min(j+31, N); i++) {
+	        //loop body
 	    }
 	}
      \end{lstlisting}
@@ -293,77 +312,77 @@ set architecture) being used.
 \section{Instruction selection}
 Instruction selection is a process which transforms the intermediate representation of the program into object code, by 
 selecting a machine instruction for each computation. The resulting object code after instruction selection is therefore machine 
-dependent. Instructions may have associated costs and the goal of instruction selection is to find a sequence of instruction which have
-minimal costs.
+dependent. Instructions may have associated costs and the goal of instruction selection is to find a sequence of instructions,
+which have minimal costs.
 
-There exist several implementations for instruction selection:
-\begin{itemize}
- \item \textbf{iBurg} is an improved version of \textbf{Burg} which was not discussed in the lecture. Its main advantage is that its much 
+There exist several implementations for instruction selection, which are presented in the following sections.
+\subsection{iBurg}
+iBurg is an improved version of \textbf{Burg} which was not discussed in the lecture. Its main advantage is that its much 
        simpler to implement (about 700 lines of code). Burg computes costs at generation time (compile-compile time). In theory iBurg 
        could support dynamic cost computation at instruction selection time (compile time), but does does not do so in practice for 
        backwards compatibility with Burg. Instructions are selected through tree pattern matching and dynamic programming. The goal of 
        tree pattern matching is to find a minimal cost cover for the data flow tree that represents the operations of the intermediate 
        language.
- \item \textbf{BEG}
 
+\subsection{BEG}
 BEG stands for Back End Generator. It is not only used for instruction selection but also includes register allocation. The important 
 aspects of BEG are:
-    \begin{itemize}
+\begin{itemize}
     \item It is more advanced then iBurg
     \item Has a more powerful rule engine and supports \textbf{dynamic costs} and \textbf{conditions} for instruction selection. 
     \item Can do \textbf{register allocation}, but only locally on basic block level
     \item Has two types of register allocation (on the fly, general register allocation)
-    \end{itemize}
+\end{itemize}
 
- \item \textbf{PBQP}: 
-       
-       Dag driven instruction selection using SSA-Graphs and PBQP. Instruction selection is modeled as a partitioned boolean quadratic 
-       problem, which is 
-       an NP-Complete problem. PBQP tries to find a cost minimal assignment $h$ of variables $X$ to their respective domains $D$:
-       \[ h: X \rightarrow D\]
-       At the core of PBQP two functions are used, a local cost function $c$ and a related cost function $C$, the sum $f$ of both forms 
-       the cost of an assignemnt for variables to their respective domains:
-       \[ f = \sum c_i + \sum{C_{ij}} \]
-       The instruction selection with PBQP works like this. For each node $u$ in the input DAG there exists a variable $x_u$ which is 
-       mapped to an operation out of a list of possible operations for this node. The possible operations are defined by a normalized 
-       graph 
-       grammar which consists of base rules and chain rules. The local cost function is defined as a 
-       cost vector $c_u$ that defines the cost of assigning each operation to $x_u$. Additionally the related cost function is modelled as 
-       a matrix $C_{uv}$. It is used to \textit{``ensure consistency among base rules and to account for the costs of chain rules''}
-       \cite{pbqp-instruction-selection}. The values of $c_u$ and $C_{uv}$ are either \textbf{zero} for matching base rules, 
-       \textbf{infinite} for incompatible 
-       base rules or a value which is the \textbf{sum of transitive chain rule costs} in order to make two non-matching base rules 
-       compatible. In summary: \textit{``A solution of PBQP determines which base rules and chain rules are to be selected''}
-       \cite{pbqp-instruction-selection}.
+\subsection{Dag-driven instruction selection with PBQP}
+Another solution for instruction selection is the dag-driven instruction selection using SSA-Graphs and PBQP. Instruction 
+selection is modeled as a partitioned boolean quadratic problem, which is 
+an NP-Complete problem. PBQP tries to find a cost minimal assignment $h$ of variables $X$ to their respective domains $D$:
+\[ h: X \rightarrow D\]
+At the core of PBQP two functions are used, a local cost function $c$ and a related cost function $C$, the sum $f$ of both forms 
+the cost of an assignemnt for variables to their respective domains:
+\[ f = \sum c_i + \sum{C_{ij}} \]
+The instruction selection with PBQP works like this. For each node $u$ in the input DAG there exists a variable $x_u$ which is 
+mapped to an operation out of a list of possible operations for this node. The possible operations are defined by a normalized 
+graph grammar which consists of base rules and chain rules. The local cost function is defined as a 
+cost vector $c_u$ that defines the cost of assigning each operation to $x_u$. Additionally the related cost function is modelled as 
+a matrix $C_{uv}$. It is used to \textit{``ensure consistency among base rules and to account for the costs of chain rules''}
+\cite{pbqp-instruction-selection}. The values of $c_u$ and $C_{uv}$ are either \textbf{zero} for matching base rules, 
+\textbf{infinite} for incompatible 
+base rules or a value which is the \textbf{sum of transitive chain rule costs} in order to make two non-matching base rules 
+compatible. In summary: \textit{``A solution of PBQP determines which base rules and chain rules are to be selected''}
+\cite{pbqp-instruction-selection}.
 
 The PBQP based instruction selection also allows instruction selection for complex patterns such as ``div-mod'' or ``auto-increment'', 
 however this can lead to cycles in the graph.
-    \begin{itemize}
-    \item SSA graphs model the data flow through registers, but not the dataflow through memory. That is, SSA graphs do not reflect memory
-          dependencies. This can lead to cylces which must be broken up by adding potential data dependencies.
+\begin{itemize}
+    \item SSA graphs model the data flow through registers, but not the dataflow through memory. That is, SSA graphs do not reflect 
+    memory dependencies. This can lead to cylces which must be broken up by adding potential data dependencies.
     \item \textbf{Complex patterns} for instructions with multiple outputs such as ``div-mod'' or ``auto-increment for pointers'' can 
           cause cycles in the graph. This can happen if \textit{``a set of operations in the SSA graph is matched by a pattern for which 
-          there exists a path in the SSA graph that exits and re-enters the complex pattern within the basic block''} \cite{pbqp-instruction-selection}.
-    \end{itemize}
+          there exists a path in the SSA graph that exits and re-enters the complex pattern within the basic block''}
+          \cite{pbqp-instruction-selection}.
 \end{itemize}
 
 Complex patterns are matched by enumerating the set of all viable instances of a complex pattern. In the resulting set two instances $p$ 
-and $q$ within a basic block $b$ may have a dependency $p \prec_b q$, which can lead to the cycles mentioned above. Such cycles are broken 
-up by adding additional constraints in the form of \textbf{cost matrices}, which \textit{''constrain the solution space such that no 
-cyclic data dependencies can be constructed in any valid solution``} \cite{pbqp-instruction-selection}.\\
+and $q$ within a basic block $b$ may have a dependency $p \prec_b q$, which can lead to the cycles mentioned above. Such cycles are 
+broken up by adding additional constraints in the form of \textbf{cost matrices}, which \textit{''constrain the solution space such that 
+no cyclic data dependencies can be constructed in any valid solution``} \cite{pbqp-instruction-selection}.\\
 
 An important difference between the different instruction selectors is when costs are computed. Burg and iBurg do it at compile-compile 
 time, where as BEG and PBQP do it are compile time.
 
 \section{Register allocation}
-There are three important algorithms. Chaitin and Briggs which use a graph coloring approach and Chow-Hennesey which use a priority 
+\label{sec:register-allocation}
+There are three important algorithms. Chaitin and Briggs which use a graph coloring approach and Chow-Hennesy which use a priority 
 function.
 
-\begin{itemize}
- \item \textbf{Chaitin:} Builds a dependency graph and then tries to simplify the graph. \textbf{Simplification} happens by removing nodes 
+\subsection{Chaitin}
+Chaitins builds a dependency graph and then tries to simplify the graph. \textbf{Simplification} happens by removing nodes 
        from the graph that have a \textit{degree} which is less than the amount of available registers. The nodes are placed on a stack 
        for later coloring. If the graph reaches a state where no such nodes can be removed, then Chaitin spills one node. The node to 
-       spill is selected through a cost function that assigns each node a weight (cost divided by degree of the node) and then chooses the 
+       spill is selected through a cost function that assigns each node a weight (cost divided by degree of the node) and then chooses 
+       the 
        one where the cost for spilling is as low as possible. If a node is spilled, then the graph is rebuild without that node and the 
        steps are repeated until the graph is empty. 
 
@@ -372,7 +391,8 @@ function.
        color that is different from all its neighbours. This approach prevents Chaitin from successfully coloring certain graph patterns 
        such as the diamond pattern (cycle of four nodes) with a minimum of 2 registers. Instead Chaitin needs one additional register.
 
- \item \textbf{Briggs:} Briggs' algorithm works just like Chaitin's, but it performs the \textbf{spilling} of nodes \textbf{after} the 
+\subsection{Briggs}
+Briggs' algorithm works just like Chaitin's, but it performs the \textbf{spilling} of nodes \textbf{after} the 
        \textbf{coloring} phase where as Chaitin spills when it removes nodes from the graph. This has the effect that Briggs can color 
        diamond patterns in the graph with a minimum of 2 registers instead of 3 like Chaitin does. The difference between Chaitin and 
        Briggs can be seen in Figure \ref{chaitin-briggs}. When the algorithm starts the \textbf{coloring phase} it reinserts nodes from 
@@ -414,24 +434,66 @@ function.
         \label{chaitin-briggs}
 	\end{figure}
 
- \item \textbf{Chow Hennesy:} Chow Hennesy assume that all variables reside in memory and are loaded into registers as required. This is
-the reverse concept of Chaitin and Briggs. A priority function is used to calculate the saving if a variables is kept in a register. The 
-variables which have the greatest savings are then selected to be stored in registers. The algorithm reserves 4 registers for the code 
-generator. If no suitable register is found, then live range splitting is applied.
+\subsection{Chow Hennesy}
+Chow-Hennesy assume that all variables reside in memory and are loaded into registers as required. This is the reverse concept of
+Chaitin and Briggs. A priority function is used to calculate the saving when a variables is kept in a register 
+instead of the memory. The variables which have the greatest savings are then selected to be stored in registers. Chow-Hennesy's
+register allocator works on procedure level.
+
+If no suitable register is found, then live range splitting is applied.\\
+
+Steps in the Chow-Hennesy algorithm:
+\begin{enumerate}
+ \item Separate the \textbf{unconstrained live ranges} and handle to handle them in the last step. Unconstrained live ranges are those 
+       which have less neighbours than available registers.
+ \item Repeat steps a) to c), each time assigning a color to a live range until all constraint live ranges have been assigned a color or
+       until there is no register left that can be assigned to any live range in any basic block.
+ \begin{enumerate}
+  \item Compute the priority function $P(lr)$ for each constraint live-range lr if has not been computed. If $P(lr)$ is negative, or if 
+        $lr$ is uncolorable, mark $lr$ as a noncandidate, and leave it unassigned. Delete $lr$ from the interference graph.
+  \item Find the live range with the highest priority function, $lr*$, and assign a color to it. The color must not be in the
+        \textbf{forbidden} set for $lr*$. The forbidden set lists registers that are not allowed as target registers for the given live 
+        range. For each live range that $lr*$ interferes with, update the \textbf{forbidden} information.
+  \item Check each live range interfering with $lr*$ to see if it needs to be split. A live range needs to be split if all of its target 
+        registers are in its forbidden set.
+ \end{enumerate}
+ \item Assign colors to the unconstrained live ranges, each time choosing a color not belonging to their forbidden set.
+\end{enumerate}
+
+\paragraph{Priority function:} The priority function $P(lr)$ assigns a priority to each live range $lr$ to determine if it should be 
+allocated to a register. $P(lr)$ is computed as the sum of execution time savings divided by the number of units in each live range:
+\begin{align}
+ S(lr) &= \sum_{i\in lr}{s_i \times w_i}\\
+ P(lr) &= \frac{S(lr)}{N}
+\end{align}
+with
+\begin{itemize}
+ \item $s_i$ = Weighted sum of load costs, store costs and move costs per unit. A unit is normally a basic block.
+ \item $w_i$ = Estimated execution frequency
+ \item $N$ = Number of live units in the live range
 \end{itemize}
-\noindent
-Differences between the algorithms:
+
+\paragraph{Live range splitting:} If a symbolic register has a very long live range it can be split into two parts, this way each smaller 
+live range can be spilled separately if necessary. Live range splitting can be easily added to Chaitin and Briggs but was not present in 
+the original algorithms.
+
+\subsection{Differences and related concepts}
+Besides knowing the algorithms, it is important to know some of their differences. The following differences between the algorithms have 
+been emphasised in the lecture. Additional differences can be found in the paper of Chow-Hennesy, which contains a summary of the 
+differences between Chaitin and Chow-Hennesy's algorithms (see \cite{chowhennesy}, Section 6).
 
 \begin{itemize}
  \item Both Chaitin and Briggs algorithms need multiple iterations where as Chow-Hennesy finishes in one iteration. The reason is that
-       for Chaitin and Briggs the insertion of spill code may block additional registers thus requiring more live ranges to be spilled.
- \item Chaiting and Briggs do the life range analysis on instruction level where as Chow-Hennesy perform life range analysis on basic 
-       block level.
+       for Chaitin and Briggs the insertion of spill code may block additional registers thus requiring more live ranges to be spilled 
+       (see Figure \ref{chaitin-briggs}).
+ \item Chaiting and Briggs do the life range analysis on instruction level where as Chow-Hennesy perform life range analysis 
+       on basic block level. This is because Chaitin and Briggs do register allocation after instruction selection, but Chow-Hennesy's 
+       algorithm works on the intermediate code level.
  \item Chaitin and Briggs do register allocation for all registers, where as Chow-Hennesy only do register allocation outside of basic 
        blocks.
 \end{itemize}
 
-\paragraph{Live range splitting:} TODO, Live range splitting can be added to Chaitin and Brigg but was not present in the original algorithms.
+The following paragraph summarizes some concepts that are relevant in connection with register allocation.
 
 \paragraph{Calling conventions:} Calling conventions are conventions about how registeres are used and who is responsible to save and 
 restore them. There are \textbf{caller-saves} and \textbf{callee-saves} registers. The conventions are a result of a multi-step 
@@ -439,8 +501,17 @@ proceedure. First the architecture has an impact on the calling conventions, the
 language. Calling conventions are part of the ABI and if not taken care of they my cause incomparibilities between programm binaries such 
 as if libraries are used or programms written in different languages interact.
 
-\paragraph{Pre-coloring:} Precoloring is used to assign correct colors to argument registers to avoid unnecessary copy instructions.
+\paragraph{Pre-coloring:} Pre-coloring is used to assign correct colors to argument registers to avoid unnecessary copy instructions.
 
+\paragraph{Rematerialization:} Some optimizations in Section\, \ref{sec:optimization}\, such as \textit{common subexpression
+elemination} optimize a program by removing redundant computation. The disadvantage of such an optimization can the that more symbolic 
+registers are used or that the live range of a symbolic register is increased. However sometimes it can be cheaper to recompute a value 
+than to store it in a register. This is often the case if a value can be recomputed with a single instruction. Rematerialization 
+recomputes a value from another value such that instead of two values only one value needs to remain in a register and the other can be 
+recomputed when needed. Rematerialization is often used in address calculation such as adding a constant value to an address. For example 
+in \lstinline|*p = *q + 2;|, if $p$ is used at different locations in a function it can either remain in a register or be recomputed
+from $q$ each time it is needed. Rematerialization is commonly done by register allocators when it is easier to recompute a value, than
+to keep it in its own register or to reload it from memory.
 
 \section{Coallescing}
 Coallescing is a form of copy elemination that finds registers that are copies of each other and removes the copy instruction, thus
@@ -461,25 +532,66 @@ results are possible).
 Performance overhead of spill code is minimized by using integer linear programming to achieve near optimal results. Since the problem is 
 NP-complete an optimal solution will be instractable for very complex problems. However the Optimal Register Allocator (ORA) solver still 
 produces very good results that are very often within 1\% of the optimal solution. However in order to define what optimal means we need 
-to know which optimizations are being done by the register allocator.
-\\
-\begin{itemize}
- \item \textbf{What does the register allocator do and not do?}
+to know which optimizations are being done (or not done) by the register allocator.\\
+
+\noindent \textbf{What does the register allocator do and not do?}
 \begin{enumerate}
  \item The register allocator does not reorder instructions.
  \item The register allocator adds only spill load instrucitons, spill store instrucitons, and rematerialization instructions.
  \item The register allocator removes only copy instructions and instructions defining symbolic registers that are rematerialized.
  \item All controll-flow paths throguh a function can potentially execute.
- \item At a given location, the cost of a spill instruction is a fixed number of cycles (based on the instrucitons' type) times the location's estimated execution count.
- \item A basic block's estimated execution conut equals the sum of the countes exeiting the block, i.e. estimated execution counts satisfy Kirchhoff's current law over the control flow graph.
+ \item At a given location, the cost of a spill instruction is a fixed number of cycles (based on the instrucitons' type) times the 
+       location's estimated execution count.
+ \item A basic block's estimated execution conut equals the sum of the countes exeiting the block, i.e. estimated execution counts 
+       satisfy Kirchhoff's current law over the control flow graph.
 \end{enumerate}
 
-\item \textbf{What means rematerialization?} Sometimes its cheaper to recompute a value than to store it in a register. This is often the 
-case if a value can be recomputed with a single instruction. rematerialization is often used in address calculation.
-\item \textbf{Improvement of the paper:} The authors improved their own paper after 6 years and reduced the complexity of the algorithm from $n^3$ to $n^{2.5}$. They also improved the speed by a factor of 1000x (10x CPU, 10x better solver, 10x improved model).
+The ORA implementation is composed out of three modules. The analysis module analyzes a functions control flow graph and identifies 
+points which require a decision about register allocation actions. For each decision a boolean decision variable is introduced that 
+records if the decision is made (1) or not (0) and also what action is taken if the variable is set to 1. These decision variables are 
+then build into a series of \textbf{inequalities} that model constraints for the decision variables. The solver module then solves these 
+inequalities and finally the rewrite module rewrites the code according to the results in the decision variables.
+
+\subsection{ORA Modules}
+Most of the paper focuses on the \textbf{analysis module} and explains the steps to derive (in)equalities from decision variables. The 
+steps in the analysis module are as follows:
+
+\begin{itemize}
+ \item Use live range analysis on the functions control flow graph and build an \textbf{instruction graph} for each symbolic register. 
+       The instruction graph contains solid and dashed lines for each symbolic register to show active and inactive live ranges, 
+       respectively.
+ \item Apply transformations to create a \textbf{symbolic register graph}. Each transformation can potentially create one or more
+       conditions. A \textbf{condition} is an equality or inequality function containing decision variables to constrain the valid 
+       assigments to the decision variables. The following gives an example for such a condition: 
+       \begin{align}
+        x_{defA} &= x_{use-end1A} + x_{use-cont1A}
+       \end{align}
+       This condition ensures that if the symbolic register $A$ is allocated to a register at the given instruction, then its use must 
+       either end at that point or it must continue. At this point decision variables are not yet tied to real registers, that happens
+       in the next step.
+ \item A copy of each symbolic register graph and its associated set of conditions is made for each \textbf{real register} that is
+       available for allocation. For example:
+       \begin{align}
+        x^1_{defA} + x^2_{defA} &= 1
+       \end{align}
+       This condition requires that the symbolic register $A$ is allocated to exactly one physical register, either register $1$ or 
+       register $2$, but not to both or none.
+ \item Next several additional conditions are added to ensure that the solution is correct and optimal. For example conditions are 
+       added such that not too many or too few symbolic registers are allocated to real registers, or to ensure optimal spill code 
+       placement.
+ \item Another additional transformation is for rematerialization. If a symbolic register can be rematerialized (see Section 
+       \ref{sec:register-allocation}), then the register allocator adds conditions to allow rematerialization instead of spilling
+       and loading a symbolic register.
 \end{itemize}
 
-TODO: Describe the three modules (steps): Analysis, Solver and Rewrite module
+When all conditions have been created they are passed to the solver module to find a valid solution for all decision variables.
+
+\subsection{Results}
+The experimental results show that the ORA performs significantly better than other register allocators and is able to remove many
+copy instructions and reduce the overhead of spill code significantly. There exists a second paper that was written six years later and 
+discusses improvements to the original ORA implementation. The authors were able to reduce the complexity of the algorithm 
+from $n^3$ to $n^{2.5}$. They also improved the speed by a factor of 1000x (10x CPU, 10x better solver, 10x improved model).
+
 
 \section{Interproceedural register allocation}
 Interproceedural register allocation (which is also often called global register allocation) performs register allocation accross
@@ -496,18 +608,19 @@ Global here means interproceedural accross all compilation units. The register a
 \end{itemize}
 The compiler does as much work as posible in order to maximize the benefits of seperate compilation such that in the linking phase there 
 is not too much work required. The compiler inserts annotations into the object code which describe how variables are used. Annotations 
-provide information to the linker about how to replace variables and how to rewrite the code.
+provide information to the linker about how to replace variables and how to rewrite the code. The following six annotations are inserted 
+by the compiler. Each annotation is tied to a variable $v$. When the linker is run, it analyses the object code to identify if $v$ has 
+been assigned to a register. If $v$ is in a register then the corresponding action is appied, otherwise the annotation is ignored.
 
-There are the following annotations:
 \begin{itemize}
- \item REMOVE
- \item STORE
- \item LOAD
- \item OP1, OP2, RESULT
+ \item \makebox[4.3cm]{REMOVE.v\hfill} Remove the instruction
+ \item \makebox[4.3cm]{STORE.v\hfill}  Replace store by copy instruction 
+ \item \makebox[4.3cm]{LOAD.v\hfill}   Replace load by copy instruction
+ \item \makebox[4.3cm]{OP1.v, OP2.v, RESULT.v\hfill} Replace operands or result by register
 \end{itemize}
 
 The register allocator generates a call graph and uses the information provided by the compiler assign variables to registers. It does 
-this by building groups of variables that are not active at the same time and then assigns are usage frequency to those groups. The same 
+this by building groups of variables that are not active at the same time and then assigns a usage frequency to those groups. The same 
 happens for global variables. Finally the groups with the highest freuqencies are allocated to registers. After variables have been 
 assigned to registers the linker can use this information rewrite the code and to apply the actions that have been stored in the 
 annotations. While doing this it must take care to adjust addresses of instructions or data if a previous instruction is being removed.
@@ -516,7 +629,7 @@ Additional considerations concern initialization and recursion.
 
 \subsubsection*{Initialization}
 Special care must be taken to initialize global variables and proceedure parameters. For global variables an INIT action is placed at the
-beginning of the program and runs when the program is invoked. The INIT action adds instructions to copy the initial value of global 
+beginning of the program and runs when the program is invoked. The INIT action contains instructions to copy the initial value of global 
 variables from memory to the respective register.
 
 \subsubsection*{Recursion and indirect calls}
@@ -549,29 +662,30 @@ registers which are moved down to lower nodes in the same cluster.
 Instruction scheduling is an optimization that deals with rearranging the instructions of a program to better exploit the inherent
 parallelism of the instructions. The goal is to move instructions that depend on each other further appart and instead insert independent
 instructions inbetween. This prevents that dependent instructions block the processor pipeline and allows a more instructions to execute 
-simultaneously. The simplest form of instruction selection is called list scheduling because from a list of possible instruction that 
+simultaneously. The simplest form of instruction scheduling is called list scheduling because from a list of possible instruction that 
 can be scheduled one with the highest priority is selected based on some kind of heuristic. There exist two papers that deal with list
 scheduling which both present different heuristics for the problem. The list scheduling algorithms presented in the papers have a worst 
 case complexity of $O(n^2)$ needed to build the dependency graph. However in practice there exists also a linear time algorithm.
 
 The improved \textbf{linear time algorithm} works as follows. The algorithms goes through each instruction and each time a register is 
-defined the algorithm saves which instruction defined the register. Each time a register is the corresponding instruction can be looked
-up and the algorithm adds a dependency to the graph. The only problem with this algorithm is that the initialization of the corresponding
-data structure may be expensive. However this can be optimized when using virtual registers by storing from which instruction to which
-instruction a basic block extends. Based on these limits it can be easily determined if an instruction is still independent. Otherwise the
-datastructures would need to be rebuild for each basic block.
+defined the algorithm saves which instruction defined the register. Each time a register is accessed the corresponding instruction can be 
+looked up and the algorithm adds a dependency to the graph. The only problem with this algorithm is that the initialization of the 
+corresponding data structure may be expensive. However this can be optimized when using virtual registers by storing from which 
+instruction to which instruction a basic block extends. Based on these limits it can be easily determined if an instruction is still 
+independent. Otherwise the datastructures would need to be rebuild for each basic block.
 
 \subsection{Phase ordering problem:}
 A problem between instruction scheduling and register allocation is that both optimizations can have negative effects on the other one, 
-thus it is difficult to decide what should be done first - register allocation or instruction selection. This problem is called the
-\textit{phase ordering problem}. The list scheduling algorithms below attempt different solution but still perform both optimizations 
-separately. A better solution is discussed in the next section which presents algorithms that perform instruction scheduling and register
+thus it is difficult to decide what should be done first -- register allocation or instruction selection. This problem is called the
+\textit{phase ordering problem}. The list scheduling algorithms below attempt different solutions but still perform both optimizations 
+separately. A better solution is discussed in the next Section which presents algorithms that perform instruction scheduling and register
 allocation together at the same time.
 
 The impact of each optimization to the other is as follows:
 \begin{itemize}
  \item Register allocation serializes the code and removes opportunities for scheduling (less instruction level parallelism).
- \item Instruction scheduling increases the length of the live ranges (register pressure), causing more interferences and thus requires the use of more registers.
+ \item Instruction scheduling increases the length of the live ranges (register pressure), causing more interferences and thus requires 
+       the use of more registers or increased spilling.
 \end{itemize}
 
 \subsection{Instruction scheduling for the IBM RISC System/6000 Processor (IBM)}
@@ -583,17 +697,17 @@ as follows:
  \item It uses a dependency graph which is constructed for each basic block. The dependency graph has one node for each instruction and
        adds a directed edge between two instructions if one needs to preceed the other.
  \item Edges are labeled with the delay between instructions.
- \item After the dependency graph has been build, nodes are labled upwards with the \textbf{maximum delay} from the node to the end of the 
-       basic block (red digits in figure \ref{dependency-graph}).
- \item The algorithm keeps a \textbf{current time} counter, which is inizially zero. It is increased by the execution time of each 
+ \item After the dependency graph has been build, nodes are labled upwards with the \textbf{maximum delay} from the node to the end of 
+       the basic block (red digits in Figure \ref{dependency-graph}).
+ \item The algorithm keeps a \textbf{current time} counter, which is initially zero. It is increased by the execution time of each 
        scheduled instruction, which is usually one.
- \item Nodes are labels with \textbf{earliest time} value which is calculated from the current time of the last scheduled predecessor plus 
-       the delay of that instruction to its successor. For example the node L.B has a delay of one and is scheduled in step 2 where the 
-       current time is increased to 2, so the ADD node would be labled with an earlies time of 3 (2+1).
+ \item Nodes are labels with \textbf{earliest time} value which is calculated from the current time of the last scheduled predecessor 
+       plus the delay of that instruction to its successor. For example the node L.B has a delay of one and is scheduled in step 2 where 
+       the current time is increased to 2, so the ADD node would be labled with an earlies time of 3 (2+1).
 \end{itemize}
 
-Figure \ref{dependency-graph} shows the a dependency graph from the paper but adds the values of the maximum delay and a table that shows 
-how the current time is updated and which instruction is selected in each step.
+Figure \ref{dependency-graph} shows the the dependency graph from the paper but adds the values of the maximum delay and a table that 
+shows how the current time is updated and which instruction is selected in each step.
 
 \begin{figure}[h!]
 \begin{tikzpicture}[node/.style={circle, draw, thick, minimum size=1.0cm,inner sep=0pt,font=\footnotesize,align=center},
@@ -609,7 +723,7 @@ how the current time is updated and which instruction is selected in each step.
     \node[node]  (add) at 	(2, 5) {ADD 	\\ \textcolor{red}{0}};
     \node[node]  (sub) at 	(3, 3) {SUB 	\\ \textcolor{red}{0}};
     \node[node]  (store) at 	(4, 1) {ST.A 	\\ \textcolor{red}{0}};
-    \node[node]  (compare) at 	(8, 1) {CMP	\\ \textcolor{red}{3}};
+    \node[node]  (compare) at 	(8, 1) {CMP	\\ \textcolor{red}{1}};
     \node[node]  (branch) at 	(6, 0) {BC	\\ \textcolor{red}{0}};
 
     \draw[edge]  (la)      -- node [swap] {1} (add);
@@ -650,7 +764,7 @@ how the current time is updated and which instruction is selected in each step.
 \end{figure}
 
 When deciding which node to select in each step, the algorithm uses an eight step heuristic. Since there is no planning or lookahead 
-involved the algorithm is not guaranteed find the best solution. There are the following eight heuristics:
+involved the algorithm is not guaranteed find the best solution. There are the following seven heuristics:
 \begin{enumerate}
     \item Initialize the set of all those instructions that have not yet been selected, and that have no predecessors in the dependency 
           graph (these are the ''legal`` ones).
@@ -663,10 +777,6 @@ involved the algorithm is not guaranteed find the best solution. There are the f
     \item Refine the subset to the unique instruction that came first in the original ordering.
 \end{enumerate}
 
-
-
-
-% keywords: directed graph, critical path, explain different heuristics
 \subsection{Efficient Instruction Scheduling for a Pipelined Architecture (HP)}
 The general idea is similar to the IBM algorithm. The algorithm works as follows:
 \begin{enumerate}
@@ -710,48 +820,64 @@ AVLREG, if the number of free registers drops below a certain threshold, then it
 threshold then it switches back to CSP.
 
 \subsection{Dag-driven register allocation}
-Dag-driven register allocation tries is a form of postpass scheduling to keep the graph flat and wide. It also does not insert any 
+Dag-driven register allocation is a form of postpass scheduling to keep the graph flat and wide. It also does not insert any 
 additional spilling instructions into the code. The algorithm introduces two measures for the graph the width and the height:
 \begin{itemize}
  \item The \textbf{width} is defines as the maximum number of mutually independent nodes. Wider graphs indicate higher parallelism.
  \item The \textbf{height} is the length of the longest path. If the graph is too high then code scheduling becomes less efficient.
 \end{itemize}
-The goal of the dag-driven register allocator is to reduce the height of the graph and limit the width of the graph to a number that is less or equal to to the amount of registers available.
+The goal of the dag-driven register allocator is to balance the dag. To do that it will \textbf{minimize the height} of the graph and 
+\textbf{limit the width} of the graph to a number that is less or equal to to the amount of registers available.
 
-TODO: Explain better
+The dag-driven register allocator uses two techniques to achieve these goals:
  \begin{itemize}
-  \item Makes uses redundant dependencies when allocating registers.
-  \item Tries to balance the graph
-  \item Inserts dependencies in such a way that the critical path does not become longer
+  \item First, it makes use of free WAR dependencies. That is, it makes use of redundant dependencies when allocating registers. Such 
+        redundant dependencies can occur for example if a RAW dependency already exists between two instructions. In the Listing below 
+        assume registers \lstinline|R2| and \lstinline|R4| are available for reuse in the second instruction. There is already a RAW 
+        dependency for \lstinline|R5|, so when register \lstinline|R4| is choosen a redundant WAR dependency is added. This WAR 
+        dependency is free because of the existing RAW dependency for \lstinline|R5|, so \lstinline|R4| is a better choice than 
+        \lstinline|R2|. When reusing registers, the dag driven register allocator will prefer those registers that only introduce redundant dependencies. 
+
+
+\begin{lstlisting}[xleftmargin=3.5mm]
+Add R5, R4, R1
+Sub ??, R5, #4
+\end{lstlisting}
+
+  \item Second, it tries to balance the growth of the dag. When a register is reused and the register allocator cannot make use of a
+        free WAR dependency then it must add a dependency which connects two independent paths and the height of the dag will be 
+        increased. So the important part in balancing the dag is to find a path to connect the path of the current instruction, such that 
+        it does not increase height of the dag too much. To achieve this for each instruction the \textit{earliest issue time (EIT)} and 
+        \textit{earliest finish time (EFT)} are computed. The register allocator now tries to find two paths such that one has a high
+        EIT and the other has a large EFT.
  \end{itemize}
 
-
-
 \subsection{Register Allocation with Scheduling Estimate (RASE)}
-The RASE approach is an integrated scheduling and register allocation method. The idea behind RASE is to perform a pre-scheduling in order 
-to calculate schedule cost estimates that enable the register allocator to make a decision about how many registers it is going to use. 
-Essentially RASE splits the available registers into two parts, one part for the register allocator, and one part for the instruction 
-scheduler. The RASE algorithm has three phases:
-\begin{itemize}
+The RASE approach is an integrated scheduling and register allocation method. The idea behind RASE is to perform a pre-scheduling in 
+order to calculate schedule cost estimates that enable the register allocator to make a decision about how many registers it is going to 
+use. Essentially RASE splits the available registers into two parts, one part for the register allocator, and one part for the 
+instruction scheduler. The RASE algorithm has three phases:
+
+\begin{enumerate}
  \item Pre-scheduling
  \item Global register allocation
  \item Instruction scheduling with local register allocation
-\end{itemize}
+\end{enumerate}
 
 The \textbf{first phase} is the pre-scheduling, which calculates the schedule cost estimate. During the pre-scheduling, the order of the 
 instructions is not changed.
 
 The \textbf{second phase} performs a \textit{global} register allocation using the schedule cost estimate, but leaves enough free 
 registers for the last phase. The schedule cost estimate allows the register allocator to estimate, how the cost of local register 
-allocation increases, if it uses more registers to allocate \textit{global} pseudo-registers. In the second phase the register allocator 
-is only responsible for allocating global pseudo-registers to physical registers, the allocation of \textit{local} pseudo-registers is 
-defered until the third phase.
+allocation increases, if it uses more registers to allocate \textit{global} symbolic registers. In the second phase the register 
+allocator is only responsible for allocating global symbolic registers to physical registers, the allocation of \textit{local} symbolic 
+registers is defered until the third phase.
 
 The \textbf{third phase} performs the instruction scheduling and does the \textit{local} register allocation.  This register allocation 
 must be within the limits for \textit{local} registers that have been determined in the second phase.
 
-\textbf{How does the schedule cost estimate function work?} The schedule cost estimate is a quadratic function (of \textit{regressive} form). It takes as input the number of local registers and returns as 
-output the estimated machine cycles:
+\textbf{How does the schedule cost estimate function work?} The schedule cost estimate is a quadratic function (of \textit{regressive} 
+form). It takes as input the number of local registers and returns as output the estimated machine cycles:
 \begin{figure}[h!]
 \begin{center}
 \begin{tikzpicture}
@@ -827,11 +953,17 @@ that multiple loop iterations can be active at the same time.
 
 \subsection{Modulo Variable Expansion}
 One problem in software pipelining is that a variable is defined and then used two cycles later. If 
-this variable remains in the same register during every loop iteration, then each iteration must take two cycles. However if copies of the 
-variable are kept in different registers for consequtive iterations, then it is possible to start a new operation in each cycle. This 
-concept of using multiple registers for the same variable is called \textbf{modulo variable expansion}.
+this variable remains in the same register during every loop iteration, then each iteration must take two cycles. However if copies of 
+the variable are kept in different registers for consequtive iterations, then it is possible to start a new operation in each cycle.
+This concept of using multiple registers for the same variable is called \textbf{modulo variable expansion}.
 
 %TODO: Which problems occur du? What is it? Why is it needed?
+
+\subsection{Resource-constrained software pipelining}
+This algorithm provides a solution to the software pipelining problem by combining instructions into sets of available instruction which 
+are then scheduled. The algorithm is very elegant but has the grave problem that the algorithm is only shown graphically, the actual
+\textbf{heuristic} to choose which instructions can be combinede into the sets and how to schedule them \textbf{is missing} and thus the 
+algorithm cannot be implemented.
 
 \subsection{Iterative modulo scheduling:}
 Different scheduling strategies exist in software pipelining, the iterative modulo scheduling is a form of the ``schedule-then-move''
@@ -855,8 +987,8 @@ of the Resource constraint MII and Recurrence constraint MII values:
 \begin{itemize}
  \item The \textbf{Resource-constrained MII} used to avoid that two instructions block the same processor resource at the same time. For 
        example if an add instruction requires to use the result bus in the fourth cycle and a multiply instruction requires the result bus 
-       in the sixth cycle, then an add cannot be sheduled two cycles after a multiply. The ResMII can be computed by performing a bin-
-       packing of the reservation tables for all the operations.
+       in the sixth cycle, then an add cannot be sheduled two cycles after a multiply. The ResMII can be computed by performing a
+       bin-packing of the reservation tables for all the operations.
  \item The \textbf{Recurrence-constrained MII} is used prevent data dependencies between the same operations in different loop iterations. 
        % TODO: How does this work?
 \end{itemize}
@@ -873,16 +1005,17 @@ between the traditional acyclic list scheduling and iterative modulo scheduling:
 \end{itemize}
 
 \subsection{Optimizations for processors with SIMD instructions}
-Processors with SIMD instructions allow to execute the same sequence of instructions on multiple instances of data such as an array. For
+Processors with SIMD instructions allow to execute the same sequence of instructions on multiple instances of data such as arrays. For
 this purpose the data must be naturally aligned on the block size. If the alignment cannot be statically determined at compile time
 then the compiler needs to insert dynamic runtime checks that verify if the pointers are aligned. If the pointers are aligned then
 SIMD instructions can be used, otherwise the memory is accessed sequentially. These dynamic checks increase the program size and impact 
 the execution speed. Not only the dynamic checks increase program size, but also the fact that there need to be two versions of a loop,
 one version with SIMD instruction and another version which accesses memory locations sequentially.
 
-Describes an analyzation technique to statically identify the alignment of C pointers. The alignment information can then be used to 
-reduce dynamic alignment checks and thus reduce the overhead of those checks. About 50\% of all pointers can be statically
-identified. The first part of the paper describes the code generator that is used to generate SIMD instructions.
+The paper describes an algorithm to generate SIMD instructions for logical and arithmetical operations as well as SIMD load and
+store instructions. Further more it describes an analyzation technique to statically identify the alignment of C pointers. 
+This alignment information can then be used to reduce dynamic alignment checks and thus reduce the overhead of those checks. 
+About 50\% of all pointers can be statically identified.
 
 \subsubsection{SIMD Instruction Generation}
 The SIMD instruction generation consists of two phases:
@@ -892,30 +1025,45 @@ The SIMD instruction generation consists of two phases:
        instructions which have been generated in phase 1.
 \end{itemize}
 
-In order to generate logical and arithmetical SIMD instructions from loops the lop may be unrolled a few times. For example if a loop 
-processes 16bit elements and the SIMD operands are 32bit then the loop needs to be unrolled two times. If the loop count is not a multiple 
-of two then a pre- or postloop is added which is executed $N \mod K$ times, where K is the unroll count and N the loop count. Depending on 
-alignment information a preloop or a postloop is added.
+In order to generate logical and arithmetical SIMD instructions from loops the \textbf{loop must be unrolled $k$ times}, where $k$ 
+depends on the number of elements in a SIMD instruction. For example if a loop processes 16bit elements and the SIMD operands are 32bit
+then the loop needs to be unrolled two times. If the loop count is not a multiple of $k$ then a pre- or postloop is added which is 
+executed $N \mod k$ times, where $k$ is the unroll count and $N$ the loop count. Depending on the alignment information a preloop or
+a postloop is added.
 
-For the generation of SIMD instructions an acyclic dependency graph is generated from the unrolled loop version. The nodes in the graph 
-are \textit{s-nodes} (statement nodes) and \textit{b-nodes} (groups of basic blocks). The algorithm first schedules s-nodes that are not 
-candidates for SIMD instructions as well as all b-nodes. Then it tries to find a series of s-nodes which are structurally equivalent and 
-combines them into a SIMD instruction. To identify the instructions that can be combined into SIMD nodes, the algorithm builds 
-\textit{``all possible combinations of SIMD candidates and rates them according to the number of resulting SIMD expressions and the number 
+The main reason for loop unrolling is get an \textbf{acyclic dependency graph} for the loop body which contains enough equivalent
+expressions that can be combined into a SIMD instruction. The nodes in the graph are \textit{s-nodes} (statement nodes) and
+\textit{b-nodes} (groups of basic blocks). The algorithm first schedules s-nodes that are not candidates\footnote{Candidates are
+those nodes for which SIMD instructions are available on the platform. For example if the target processor does not support a special
+SIMD instruction for multiplication then nodes with multiplications are not candidates for SIMD instructions.} for SIMD instructions
+as well as all b-nodes. Then it tries to find a series of s-nodes which are structurally equivalent and combines them into a SIMD
+instruction. To identify the instructions that can be combined into SIMD nodes, the algorithm builds \textit{``all possible
+combinations of SIMD candidates and rates them according to the number of resulting SIMD expressions and the number 
 of adjacent subwords in the SIMD expressions''}. Scheduled nodes are removed from the dependency graph and the proceedure is repeated 
 until the graph is empty.
 
-The algorithm als applies scalar expansion and accumulator splitting. Scalar expansion replaces a scalar by an array which 
+The algorithm also applies scalar expansion and accumulator splitting. Scalar expansion replaces a scalar by an array which 
 contains copies of the scalar, such that it can be used with SIMD instructions. Accumulator splitting is used in reductions such as 
 calculating the sum of an array. The array is split into several smaller arrays for which the sum can be calculated in parallel, the 
 results is then a smaller array from which the final result can be computed.
 
 \subsubsection{Alignment analysis}
-\begin{itemize}
- \item Intra procedural alignment analysis
- \item Inter procedural alignment analysis
-\end{itemize}
+The alignment analysis is done by \text{abstract interpretation} of the code. For each expression that modifies a pointer the
+algorithm stores the possible remainders modulo $k$, where $k$ is the number of bytes in a SIMD instruction (e.g. 4 on 32bit). Doing
+so keeps the possible state space small and prevents a state explosion during the abstract interpretation of the code.
 
+The algorithm first performs an intra-proceedural analysis by examining pointers inside proceedures, followed by an inter-proceedural
+analysis. When an array is defined or dynamically loaded, then the first element is already aligned correctly, that is the alignment
+is zero modulo the block size. This is enforced by the program loader, the compiler and the function family of \lstinline|malloc|
+when memory is allocated dynamically. When a pointer is modified for example through pointer arithmetic, the algorithm computes the
+possible remainers of the new pointer. For example for a block size of 4 bytes the possible values for the pointer alignment are
+\lstinline|{0,1,2,3}|. If the set of alignment information for a pointer contains only the value \lstinline|{0}|, then the pointer
+is correctly aligned, if the set contains multiple values it means that that several alignments are possible. This in the next step
+this aligment information is propagated accoss proceedure calls by the inter-proceedural analysis.
+
+Based on the alignment information that the algorithm computed, dynamic checks are inserted if necessary.
+
+\newpage
 \begin{thebibliography}{9}
 \footnotesize
 \bibitem{powerpc}
