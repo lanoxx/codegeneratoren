@@ -723,7 +723,7 @@ shows how the current time is updated and which instruction is selected in each 
     \node[node]  (add) at 	(2, 5) {ADD 	\\ \textcolor{red}{0}};
     \node[node]  (sub) at 	(3, 3) {SUB 	\\ \textcolor{red}{0}};
     \node[node]  (store) at 	(4, 1) {ST.A 	\\ \textcolor{red}{0}};
-    \node[node]  (compare) at 	(8, 1) {CMP	\\ \textcolor{red}{1}};
+    \node[node]  (compare) at 	(8, 1) {CMP	\\ \textcolor{red}{3}};
     \node[node]  (branch) at 	(6, 0) {BC	\\ \textcolor{red}{0}};
 
     \draw[edge]  (la)      -- node [swap] {1} (add);
@@ -735,8 +735,8 @@ shows how the current time is updated and which instruction is selected in each 
     \draw[edge]  (sub)     -- node        {0} (store);
     \draw[edge]  (store)   -- node        {0} (branch);
 
-    \draw[edge]  (le)      -- node {3} (compare);
-    \draw[edge]  (compare) -- node {1} (branch);
+    \draw[edge]  (le)      -- node {1} (compare);
+    \draw[edge]  (compare) -- node {3} (branch);
 
     \node[legend] (foo) at (11,6) {
 	\begin{tikzpicture}
